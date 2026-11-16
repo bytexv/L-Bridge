@@ -1,0 +1,60 @@
+'use strict';
+let helpEnabled=localStorage.getItem('lbridge-help')!=='off',guideStep=0,helpReturn=null;
+const helpTopics={
+  web:{title:'Research with current sources',text:'Enable Web research when creating a goal or in Settings. Claude gets WebSearch and WebFetch; Codex gets live web search. The agents share source links and short summaries. Searches send queries to providers and websites; do not include secrets. Off disables these built-in tools, but commands and connected MCP servers have their own network access. Provider account and regional restrictions still apply.'},
+  prompt:{title:'One prompt for the whole team',text:'Describe what you want and what a good result looks like. Both agents get the same goal. Include the target Roblox place if several are open. They choose roles unless you assign them.'},
+  workspace:{title:'Where the work lives',text:'Leave this empty to create a local workspace, or enter the full path of an existing folder. Both agents share it. The bridge stores the conversation separately in its local data folder.'},
+  access:{title:'Choose what this goal can do',text:'Read only lets agents inspect files. Read + write files also allows changes inside the workspace. Files + commands additionally permits local programs and enabled MCP tools. Commands and external tools run with your OS user permissions; this is not a sandbox for L-Bridge.'},
+  allowance:{title:'Bridge actions, not dollars',text:'Messages, file writes, task updates, command/tool calls and completion confirmations use this allowance. Reaching it pauses work. Reads and syncs do not count. This limit does not cap provider tokens, subscription usage or charges.'},
+  start:{title:'Start both agents here',text:'Start Team launches installed, signed-in Claude Code and Codex runners on this goal. It creates new working sessions, not turns in existing chat windows. Stop Team cancels those runners. Desktop plugins remain a separate, manually started option.'},
+  runners:{title:'Connect the installed runners',text:'Install Claude Code and Codex CLI from their official sites. Run claude auth login and codex login in a terminal once. Save their executable paths here, then Check runners. An optional model name must be available to that account.'},
+  rounds:{title:'A bounded collaboration loop',text:'Each round starts both agents with the goal, summary, tasks and recent updates. They do a useful piece of work, then return. The coordinator starts the next round until completion, error, pause, the round limit, or two rounds without progress.'},
+  timeout:{title:'Time allowed for one agent turn',text:'If either runner exceeds this time, its process is cancelled and the team stops with an error. Increase it for longer tasks when appropriate. A new Start Team run gets fresh turn and round limits; the goal action count stays cumulative.'},
+  mcp:{title:'Shared tools for a shared app',text:'Add a trusted local MCP server, save and test the connection, then enable it for this goal below. The Roblox preset uses the server built into Studio. Keep Studio open and enable Studio as MCP server in Assistant settings.'},
+  lease:{title:'How the agents avoid conflicting edits',text:'One agent holds an exclusive lease while it reads, edits and tests through a shared MCP server. The peer can work on other tasks and inspect saved results. Human edits or separate direct connections are outside this protection. If a call disconnects, inspect the app before reconnecting.'},
+  messages:{title:'Steer without starting over',text:'The message box adds direction to the shared goal. Active agents see it on their next sync or round. If the team has stopped, add your direction and press Continue task. Sending a message alone does not launch the runners.'},
+  summary:{title:'The short version',text:'The agents maintain this readable progress summary while exchanging concise messages. It should cover decisions, evidence, open questions and next steps. Raw messages show the full shared text; Export saves the goal transcript.'},
+  tasks:{title:'Who is doing what',text:'Agents create tasks, claim ownership, and record evidence when done. Claims expire after 20 minutes unless renewed. The other agent reviews the work. Completion requires both agents to confirm, with all tasks finished.'},
+  artifacts:{title:'Files and shared tool evidence',text:'Files written through bridge_files appear under Artifacts with their author and hash. External MCP results, including images, are stored as shared receipts and referenced in the conversation. Both agents can retrieve them; they are not ordinary workspace files.'}
+};
+const guideSteps=[
+  {tag:'01 · THE IDEA',title:'One goal. A working team.',text:'L-Bridge gives Claude and the OpenAI agent the same prompt, shared messages, tasks and evidence. The agents can choose roles, challenge each other, and review the result.',action:'You guide the goal. They coordinate the work.'},
+  {tag:'02 · CONNECT ONCE',title:'Give the team its runners.',text:'Open Team & tools. Click Install for each agent, finish in the setup window, then click Sign in. Return here and Check connections. If Codex needs Node.js, its download page opens; install it and click Install Codex again.',action:'Start Team uses these runners. Existing chat windows do not need to be open.'},
+  {tag:'03 · THE PROMPT',title:'Say what success looks like.',text:'Create a goal and describe the result you want. Choose a local folder or let L-Bridge create one. Assign roles if you want; otherwise leave that decision to the agents.',action:'For Roblox, name the place and describe what should happen in a playtest.'},
+  {tag:'04 · ACCESS & LIMITS',title:'Set their room to work.',text:'Choose read-only files, read/write files, or Files + commands. The last option is required for external MCP tools. Set the action allowance, maximum rounds and time per turn.',action:'These controls bound work. They are not dollar caps, and commands run under your OS user.'},
+  {tag:'05 · ROBLOX & MCP',title:'Put both minds in the same Studio.',text:'In Roblox Assistant settings, enable Studio as MCP server. In Team & tools, add the Roblox Studio preset, save, and test it. Select Roblox under Tools for your goal and save. Keep Studio open.',action:'Agents take turns holding an editing lease and share the full tool results. Avoid other simultaneous writers.'},
+  {tag:'06 · START & STEER',title:'Press Start Team.',text:'Both runners work in bounded rounds. Watch their status and activity, add directions in the message box, and inspect the shared summary. Stop Team or Pause cancels owned work. If stopped, Continue task starts a new attempt using the saved goal, tasks and conversation.',action:'A failure or uncertain MCP edit is shown explicitly. Review it before continuing; edits are not retried blindly.'},
+  {tag:'WEB · CURRENT SOURCES',title:'Give the team web access.',text:'Enable Web research in the goal form or Settings. Both runners can search live sources; Claude can also fetch pages directly. They share links and readable findings through the bridge. Existing goals keep web research off until you enable it.',action:'Queries leave your PC. Keep secrets and personal data out of queries. Provider restrictions may still block a site.'},
+  {tag:'07 · REVIEW THE RESULT',title:'Check what they actually made.',text:'The task board shows ownership and evidence. Artifacts lists files saved through the bridge. The conversation records tool receipts that either agent can inspect, including images. Both agents must confirm completion.',action:'Their agreement is a useful review step, not proof. Inspect the deliverables and tests yourself.'},
+  {tag:'08 · MAKE IT YOURS',title:'Keep the help you want.',text:'Settings → Learning & help lets you hide the information icons or reopen this guide. Closing the browser tab leaves the service running; use Settings → Stop local bridge to exit. Manual desktop plugin setup remains under Connections. Local coordination does not make model inference local: provider processing, account access and usage limits still apply.',action:'For troubleshooting and update instructions, the download also includes README.md and TESTING.md.'}
+];
+function helpIcon(key){
+  const topic=helpTopics[key];
+  return helpEnabled&&topic?`<button type="button" class="help-icon" data-help="${esc(key)}" title="${esc(topic.text)}" aria-label="Help: ${esc(topic.title)}">i</button>`:'';
+}
+function learningSettings(){
+  return `<section class="settings-block"><h3>Learning & help</h3><label class="help-setting"><span><b>Show information icons</b><small>Quick explanations beside the main controls. Saved in this browser.</small></span><input id="help-toggle" type="checkbox" ${helpEnabled?'checked':''} aria-label="Show information icons"></label><p>New here, or connecting Roblox? The walkthrough covers prompts, runners, permissions, shared tools, usage and reviewing the result.</p><button class="btn dark" type="button" data-action="guide">Open walkthrough ${icon('arrow')}</button></section>`;
+}
+function showGuide(step=0){
+  guideStep=Math.max(0,Math.min(guideSteps.length-1,step));const s=guideSteps[guideStep];
+  if(modal.open)modal.close();
+  showModal(`<div class="tutorial"><div class="modal-head"><div class="eyebrow">L-BRIDGE FIELD GUIDE</div><button class="modal-close" data-action="close" aria-label="Close walkthrough">×</button></div><div class="guide-progress" aria-label="Step ${guideStep+1} of ${guideSteps.length}">${guideSteps.map((_,i)=>`<span class="${i<=guideStep?'done':''}"></span>`).join('')}</div><div class="guide-tag">${s.tag}</div><h2>${esc(s.title)}</h2><p class="guide-body">${esc(s.text)}</p><div class="guide-takeaway">${icon('bolt',18)}<span>${esc(s.action)}</span></div><div class="modal-actions"><button class="btn" data-guide-step="${guideStep-1}" ${guideStep===0?'disabled':''}>Back</button><span class="note">${guideStep+1} / ${guideSteps.length}</span>${guideStep===guideSteps.length-1?'<button class="btn dark" data-action="close">Got it</button>':`<button class="btn dark" data-guide-step="${guideStep+1}">Next ${icon('arrow')}</button>`}</div></div>`);
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.action==='close'&&helpReturn){e.preventDefault();e.stopImmediatePropagation();restoreGoalForm();return}
+  if(b.dataset.action==='guide'){e.preventDefault();showGuide()}
+  if(b.dataset.guideStep!==undefined){e.preventDefault();showGuide(Number(b.dataset.guideStep))}
+  if(b.dataset.help){
+    e.preventDefault();const t=helpTopics[b.dataset.help];if(!t)return;
+    const draft=modal.querySelector('#new-form');if(draft)helpReturn=Object.fromEntries(new FormData(draft));
+    if(modal.open)modal.close();
+    showModal(`<div class="modal-head"><div class="eyebrow">A LITTLE CONTEXT</div><button class="modal-close" data-action="close" aria-label="Close help">×</button></div><h2>${esc(t.title)}</h2><p class="guide-body">${esc(t.text)}</p><div class="modal-actions"><button class="btn" data-action="guide">Full walkthrough</button><button class="btn dark" data-action="close">Got it</button></div>`);
+  }
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='help-toggle'){helpEnabled=e.target.checked;localStorage.setItem('lbridge-help',helpEnabled?'on':'off');render();toast(helpEnabled?'Help icons shown':'Help icons hidden. The walkthrough is always in Settings.')}
+});
+
+function restoreGoalForm(){const values=helpReturn;helpReturn=null;if(modal.open)modal.close();newGoal();for(const [key,value] of Object.entries(values||{})){const input=modal.querySelector('[name="'+key+'"]');if(input)input.value=value}}
+document.addEventListener('DOMContentLoaded',()=>modal.addEventListener('cancel',e=>{if(helpReturn){e.preventDefault();restoreGoalForm()}}));

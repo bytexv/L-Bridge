@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+<title id="title">L-Bridge — two minds, one mission</title><desc id="desc">Local collaboration for Claude and Codex. One prompt, shared tools, visible progress.</desc>
+<rect width="1280" height="420" rx="24" fill="#20221f"/>
+<g fill="none" stroke="#40443b" stroke-width="1"><path d="M820 0v420M940 0v420M1060 0v420M1180 0v420M760 90h520M760 210h520M760 330h520"/></g>
+<rect x="54" y="49" width="48" height="48" rx="12" fill="#e9ff79"/>
+<path d="M67 61v25h12m3-21 10 9-10 9m-6-9h16" fill="none" stroke="#20221f" stroke-width="4" stroke-linejoin="round"/>
+<g font-family="Arial, Helvetica, sans-serif"><text x="118" y="82" fill="#e9ff79" font-size="26" font-weight="700">L-BRIDGE</text>
+<text x="54" y="190" fill="#f5f2e9" font-size="68" font-weight="700">Two minds.</text><text x="54" y="264" fill="#f5f2e9" font-size="68" font-weight="700">One mission.</text>
+<text x="57" y="321" fill="#babeb3" font-size="22">One prompt. Shared tools. Visible progress.</text>
+<text x="57" y="373" fill="#e9ff79" font-size="14" letter-spacing="3">LOCAL COORDINATION / WINDOWS / MCP</text>
+<rect x="795" y="139" width="155" height="143" rx="20" fill="#f5f2e9"/><rect x="1047" y="139" width="155" height="143" rx="20" fill="#e9ff79"/>
+<text x="872" y="207" fill="#20221f" font-size="42" text-anchor="middle" font-weight="700">C</text><text x="872" y="248" fill="#20221f" font-size="18" text-anchor="middle">Claude</text>
+<text x="1125" y="207" fill="#20221f" font-size="42" text-anchor="middle" font-weight="700">G</text><text x="1125" y="248" fill="#20221f" font-size="18" text-anchor="middle">Codex</text>
+<path d="M969 210h58m-10-10 10 10-10 10m-38-20-10 10 10 10" fill="none" stroke="#e9ff79" stroke-width="3"/>
+</g></svg>
