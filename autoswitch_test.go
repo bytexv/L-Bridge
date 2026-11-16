@@ -48,7 +48,7 @@ func TestAutoSwitchTransferAndSoloCompletion(t *testing.T) {
 	}
 }
 func TestAutoSwitchGuards(t *testing.T) {
-	for _, guard := range []string{"off", "paused", "uncertain", "already-solo"} {
+	for _, guard := range []string{"off", "paused", "uncertain", "busy-tool", "already-solo"} {
 		t.Run(guard, func(t *testing.T) {
 			s, g := switchFixture(t)
 			switch guard {
@@ -59,6 +59,10 @@ func TestAutoSwitchGuards(t *testing.T) {
 			case "uncertain":
 				g.MCPServers = []string{"fixture"}
 				s.state.MCPWarnings["fixture"] = "unknown edit"
+			case "busy-tool":
+				c := s.runtime.hub.connection("fixture")
+				c.goal = g.ID
+				c.busy = true
 			case "already-solo":
 				g.Team.SoloAgent = "chatgpt"
 			}

@@ -568,6 +568,23 @@ func (s *Store) autoSwitchLocked(g *Goal, failed, survivor, reason string) error
 	if (failed != "claude" && failed != "chatgpt") || (survivor != "claude" && survivor != "chatgpt") || failed == survivor {
 		return errors.New("invalid handoff")
 	}
+	for _, connection := range s.runtime.hub.snapshot() {
+		if str(connection, "goal") == g.ID && connection["busy"] == true {
+			return errors.New("an external tool is still settling; review its outcome before continuing")
+		}
+	}
+	jobs.Lock()
+	commandsBusy := false
+	for key := range jobs.items {
+		if strings.HasPrefix(key, g.ID+":") {
+			commandsBusy = true
+			break
+		}
+	}
+	jobs.Unlock()
+	if commandsBusy {
+		return errors.New("a workspace command is still stopping; inspect its outcome before continuing")
+	}
 	for _, sid := range g.MCPServers {
 		if s.state.MCPWarnings[sid] != "" {
 			return fmt.Errorf("review the uncertain %s edit before continuing", sid)

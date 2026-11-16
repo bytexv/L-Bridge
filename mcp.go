@@ -122,6 +122,9 @@ func stdio(dir, agent string) {
 			reply(req.ID, nil, -32601, "Method not found")
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "L-Bridge desktop transport closed:", err, ". Requests must fit within 8 MiB; split larger content.")
+	}
 	cancel()
 	wg.Wait()
 }
