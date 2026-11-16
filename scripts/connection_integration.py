@@ -14,7 +14,7 @@ class OtherApp(http.server.BaseHTTPRequestHandler):
 
 class Client:
     def __init__(self, directory, agent):
-        self.seq = 0; self.lines = queue.Queue()
+        self.seq = 0; self.lines = queue.Queue(); self.notifications = []
         env = dict(os.environ); env.pop('LBRIDGE_RUN_TOKEN', None)
         self.p = subprocess.Popen([exe, '--mcp', '--agent', agent, '--data-dir', str(directory)],
                                   env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -28,7 +28,10 @@ class Client:
         self.seq += 1
         self.p.stdin.write(json.dumps({'jsonrpc': '2.0', 'id': self.seq, 'method': method, 'params': params}) + '\n')
         self.p.stdin.flush()
-        reply = json.loads(self.lines.get(timeout=20))
+        while True:
+            reply = json.loads(self.lines.get(timeout=20))
+            if 'id' in reply: break
+            self.notifications.append(reply)
         assert reply['id'] == self.seq and 'error' not in reply, reply
         return reply['result']
     def call(self, name, **arguments):
@@ -62,6 +65,12 @@ with tempfile.TemporaryDirectory(prefix='lbridge connection ') as temp:
         assert record() == first, 'simultaneous starts produced multiple services'
         gid = clients[0].call('bridge_create', title='Shared reconnect goal', prompt='Preserve this goal across reconnects.')['goal_id']
         both('bridge_join', goal_id=gid, role='Connection tester')
+        large_text=chr(1)*200000  # Escaped JSON exceeds the former 1 MiB adapter limit.
+        clients[0].call('bridge_files',goal_id=gid,op='write',path='escaped.txt',content=large_text,expected_hash='')
+        assert clients[1].call('bridge_files',goal_id=gid,op='read',path='escaped.txt')['content']==large_text
+        cursor=clients[0].call('bridge_sync',goal_id=gid)['cursor']
+        clients[0].rpc('tools/call',{'name':'bridge_sync','arguments':{'goal_id':gid,'after':cursor,'wait_seconds':11},'_meta':{'progressToken':'fixture-progress'}})
+        assert any(n.get('method')=='notifications/progress' and n['params']['progressToken']=='fixture-progress' for n in clients[0].notifications)
         clients[0].call('bridge_send', goal_id=gid, body='One shared service.', summary='Connection verified.', nonce='connection-test')
         assert any(m['body'] == 'One shared service.' for m in clients[1].call('bridge_sync', goal_id=gid)['messages'])
         command('--stop')
@@ -87,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='lbridge connection ') as temp:
             assert r.read() == b'Unrelated application'
         print(json.dumps({'result': 'PASS', 'checks': ['simultaneous cold adapters share one service',
               'occupied default port selects a free loopback port', 'both agents find the same goal',
-              'cross-agent message handoff', 'existing adapters reconnect after stop',
+              'large escaped request keeps adapter connected','long call progress notifications','cross-agent message handoff', 'existing adapters reconnect after stop',
               'crash releases service lock', 'saved goal retained', 'unrelated application untouched']}))
     finally:
         for c in clients: c.close()

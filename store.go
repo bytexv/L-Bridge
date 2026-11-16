@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const version = "0.4.0"
+const version = "0.4.1"
 
 type Message struct {
 	Seq     int    `json:"seq"`
@@ -44,6 +44,7 @@ type Artifact struct {
 	Time  string `json:"time"`
 }
 type Goal struct {
+	AutoSwitch     bool              `json:"auto_switch"`
 	WebAccess      bool              `json:"web_access"`
 	ID             string            `json:"id"`
 	Title          string            `json:"title"`

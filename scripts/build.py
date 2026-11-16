@@ -54,9 +54,11 @@ The EXE also offers a restart when it finds an older running version. A newer ru
 4. Click Check connections. Advanced paths are optional.
 5. Create one goal, then press Start Team.
 6. Add follow-up directions in the goal message box. Stop Team cancels the runners.
-7. Enable Web research in the goal Settings for live search. After a stopped run, use Continue task.
-8. Use Settings -> Check & install update, or Update L-Bridge.cmd, for future versions.
-9. Open ? Guide for the built-in tutorial. Settings -> Learning & help toggles information icons.
+7. Auto switch in goal Settings lets the surviving Start Team runner take over after a peer fails. Estimated progress follows the shared task board.
+8. Replace BOTH desktop plugin packages and restart both hosts to receive the adapter reconnection fixes.
+9. Enable Web research in the goal Settings for live search. After a stopped run, use Continue task.
+10. Use Settings -> Check & install update, or Update L-Bridge.cmd, for future versions.
+11. Open ? Guide for the built-in tutorial. Settings -> Learning & help toggles information icons.
 
 ROBLOX: Enable Studio as MCP server in Roblox Assistant settings. In L-Bridge add the Roblox Studio preset and test the saved connection, then enable it under Tools for your goal. Use Files + commands access. Keep Studio open.
 

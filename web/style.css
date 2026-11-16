@@ -14,3 +14,5 @@
 @media(max-width:680px){.top-right{gap:8px}.top-right .badge{display:none}.quick-guide{font-size:10px;padding:6px}.guide-body{font-size:13px}.guide-takeaway{padding:14px}}
 
 .settings-block details{margin:18px 0}.settings-block summary{cursor:pointer;font-weight:650;padding:12px 0}.settings-block details[open]>summary{margin-bottom:12px}.connect-card .actions{flex-wrap:wrap}.connect-card a{color:inherit;text-underline-offset:4px}
+
+.goal-progress{max-width:none;margin:18px 0;padding:18px 24px}.goal-progress h3{margin:0}.goal-progress progress{display:block;width:100%;height:12px;margin:14px 0;accent-color:#657a1d}.goal-progress .note{margin:0}

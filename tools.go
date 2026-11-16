@@ -41,7 +41,7 @@ func toolList() []M {
 		tool("bridge_task", "Create, claim, finish or release a task. Claims expire after 20 minutes; re-claim to renew. Only the owner can finish/release. Use explicit evidence when finishing.", M{"goal_id": gid, "op": M{"type": "string", "enum": []string{"create", "claim", "done", "release"}}, "task_id": prop("string", "Existing task ID"), "title": prop("string", "New task title"), "evidence": prop("string", "What was produced and how it was checked")}, []string{"goal_id", "op"}, false),
 		tool("bridge_files", "List/read/write UTF-8 files inside the goal workspace. Existing files require their current SHA-256 hash to write; new files use expected_hash=''. Never write without reading first. Path must be relative; no symlinks. Commands are a separate permission.", M{"goal_id": gid, "op": M{"type": "string", "enum": []string{"list", "read", "write"}}, "path": prop("string", "Relative path using / separators; list defaults to '.'"), "content": prop("string", "UTF-8 content <=512 KiB"), "expected_hash": prop("string", "Current SHA-256; empty only for a new file")}, []string{"goal_id", "op"}, false),
 		tool("bridge_run", "Run a local executable with explicit argv in the workspace, only when the user enabled commands. This has your OS user's permissions, NOT a sandbox. Prefer existing host tools when appropriate and report their results through bridge_send. No background/detached commands.", M{"goal_id": gid, "program": prop("string", "Executable name/path"), "args": M{"type": "array", "items": M{"type": "string"}}, "timeout_seconds": prop("integer", "1–120; default 60")}, []string{"goal_id", "program", "args"}, false),
-		tool("bridge_finish", "Confirm the current deliverable is complete, with evidence. Both Claude and ChatGPT must confirm without intervening work changes; all tasks must be done. Approval is a model judgment, not proof. Further work resets confirmations.", M{"goal_id": gid, "evidence": prop("string", "Checks performed and any known limitations")}, []string{"goal_id", "evidence"}, false),
+		tool("bridge_finish", "Confirm the current deliverable is complete, with evidence. Both Claude and ChatGPT must confirm without intervening work changes, unless Auto switch has explicitly assigned this running attempt to one agent; then only that agent confirms without claiming peer review; all tasks must be done. Approval is a model judgment, not proof. Further work resets confirmations.", M{"goal_id": gid, "evidence": prop("string", "Checks performed and any known limitations")}, []string{"goal_id", "evidence"}, false),
 		tool("bridge_mcp", "Use a shared local MCP server. List servers, discover tools, acquire an exclusive lease, call tools, then release. Hold the lease across read/edit/test and re-read after acquisition; if busy do other work or end your turn, never poll. Both agents can read full tool receipts with op=result. Only user-enabled servers are accessible. Do not use another connection to bypass this queue.", M{"goal_id": gid, "op": M{"type": "string", "enum": []string{"servers", "tools", "acquire", "call", "release", "result"}}, "server_id": prop("string", "Server ID"), "lease": prop("string", "Lease returned by acquire; required for call/release"), "tool": prop("string", "Exact tool name from tools"), "arguments": M{"type": "object", "additionalProperties": true}, "receipt_id": prop("string", "Shared receipt ID for result")}, []string{"goal_id", "op"}, false),
 	}
 }
@@ -212,6 +212,11 @@ func (s *Store) call(ctx context.Context, agent, name string, a M) (any, error) 
 		}
 		g.Votes = map[string]string{}
 	case "bridge_finish":
+		for _, sid := range g.MCPServers {
+			if s.state.MCPWarnings[sid] != "" {
+				return nil, errors.New("review uncertain MCP edits before confirming completion")
+			}
+		}
 		jobs.Lock()
 		busy := false
 		for k := range jobs.items {
@@ -227,7 +232,11 @@ func (s *Store) call(ctx context.Context, agent, name string, a M) (any, error) 
 		if e == "" || len(e) > 4000 {
 			return nil, errors.New("provide completion evidence, <=4000 bytes")
 		}
-		if len(g.Agents) < 2 {
+		solo := g.soloCompletionAgent()
+		if solo != "" && solo != agent {
+			return nil, errors.New("only the Auto switch survivor may complete this attempt")
+		}
+		if solo == "" && len(g.Agents) < 2 {
 			return nil, errors.New("both agents must join before completion")
 		}
 		for _, t := range g.Tasks {
@@ -240,10 +249,10 @@ func (s *Store) call(ctx context.Context, agent, name string, a M) (any, error) 
 		}
 		g.Votes[agent] = e
 		g.add(agent, "finish", e, strings.Title(agent)+" confirmed completion.")
-		if g.Votes["claude"] != "" && g.Votes["chatgpt"] != "" {
+		if solo == agent || (g.Votes["claude"] != "" && g.Votes["chatgpt"] != "") {
 			g.Status = "completed"
 		}
-		out = M{"status": g.Status, "confirmations": g.Votes}
+		out = M{"status": g.Status, "confirmations": g.Votes, "solo_agent": solo}
 	default:
 		return nil, errors.New("unknown tool")
 	}
@@ -298,7 +307,7 @@ func (s *Store) syncGoal(ctx context.Context, agent string, a M) (any, error) {
 				msgs = append(msgs, M{"seq": m.Seq, "from": m.Agent, "kind": m.Kind, "body": m.Body})
 			}
 			// Serialize while locked to return a detached snapshot.
-			out := M{"goal_id": g.ID, "status": g.Status, "cursor": end, "has_more": end < len(g.Messages), "messages": msgs, "summary": g.Summary, "summary_version": g.SummaryVersion, "roles": g.Agents, "tasks": g.Tasks, "artifacts": g.Artifacts, "actions_remaining": g.Limit - g.Actions, "access": g.Mode, "mcp_servers": g.MCPServers, "confirmations": g.Votes}
+			out := M{"goal_id": g.ID, "status": g.Status, "cursor": end, "has_more": end < len(g.Messages), "messages": msgs, "summary": g.Summary, "summary_version": g.SummaryVersion, "roles": g.Agents, "tasks": g.Tasks, "artifacts": g.Artifacts, "actions_remaining": g.Limit - g.Actions, "access": g.Mode, "mcp_servers": g.MCPServers, "confirmations": g.Votes, "solo_agent": g.soloCompletionAgent()}
 			if after == 0 {
 				out["original_goal"] = g.Prompt
 				out["workspace"] = g.Root
@@ -454,6 +463,7 @@ func (s *Store) files(g *Goal, agent string, a M) (any, error) {
 }
 
 type cappedBuffer struct {
+	tail  bool
 	mu    sync.Mutex
 	data  []byte
 	total int
@@ -464,6 +474,16 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 	defer b.mu.Unlock()
 	n := len(p)
 	b.total += n
+	if b.tail {
+		if len(p) > 32768 {
+			p = p[len(p)-32768:]
+		}
+		b.data = append(b.data, p...)
+		if len(b.data) > 32768 {
+			b.data = b.data[len(b.data)-32768:]
+		}
+		return n, nil
+	}
 	remaining := 32768 - len(b.data)
 	if remaining > 0 {
 		if len(p) > remaining {

@@ -63,6 +63,24 @@ def mock_runner():
     try:
         c.call('bridge_join', goal_id=gid, role='Builder' if agent == 'claude' else 'Reviewer')
         snapshot = c.call('bridge_sync', goal_id=gid)
+        if 'AUTO_SWITCH_TEST' in prompt:
+            failure = ('FAIL_CLAUDE' in prompt and agent == 'claude') or ('FAIL_CODEX' in prompt and agent == 'chatgpt') or 'FAIL_BOTH' in prompt
+            solo = snapshot.get('solo_agent') == agent
+            if failure:
+                task = c.call('bridge_task', goal_id=gid, op='create', title=agent+' inherited task')
+                c.call('bridge_task', goal_id=gid, op='claim', task_id=task['id'])
+                c.call('bridge_files',goal_id=gid,op='write',path=agent+'-partial.txt',content='Saved before the connection failed.',expected_hash='')
+                print('Intentional connection failure: '+agent,file=sys.stderr);sys.exit(1)
+            if solo:
+                if 'SURVIVOR_FAIL' in prompt: print('Survivor also lost connection',file=sys.stderr);sys.exit(1)
+                for task in snapshot['tasks']:
+                    assert task['owner'] == agent, task
+                    if task['status'] != 'done': c.call('bridge_task',goal_id=gid,op='done',task_id=task['id'],evidence='Inspected inherited work and completed it.')
+                c.call('bridge_summary',goal_id=gid,text='Completed the inherited goal alone. No peer review.',expected_version=snapshot['summary_version'])
+                c.call('bridge_finish',goal_id=gid,evidence='Solo fixture completed all inherited tasks.')
+            if agent=='claude':emit({'type':'result','subtype':'success','is_error':False,'result':'Auto switch fixture turn.'})
+            else:emit({'type':'turn.completed'})
+            return
         entries = c.call('bridge_files', goal_id=gid, op='list')['entries']
         if agent == 'claude' and not any(x['name'] == 'fixture.txt' for x in entries):
             l = c.call('bridge_mcp', goal_id=gid, op='acquire', server_id='fixture')
@@ -127,8 +145,8 @@ def integration(exe):
             api('runner/settings', cfg)
             assert all(x['authenticated'] for x in api('runner/check', {})['checks'])
             assert len(api('mcp/test', {'server_id': 'fixture'})['tools']) == 1
-            def new_goal(prompt):
-                gid = api('create', {'title': 'Team integration fixture', 'prompt': prompt, 'mode': 'commands', 'limit': 120})['id']
+            def new_goal(prompt, auto_switch=False):
+                gid = api('create', {'title': 'Team integration fixture', 'prompt': prompt, 'mode': 'commands', 'limit': 120, 'auto_switch':auto_switch})['id']
                 api('mcp/allow', {'goal_id': gid, 'server_ids': ['fixture']})
                 return gid
             def goal(gid): return next(g for g in api('state')['goals'] if g['id'] == gid)
@@ -147,7 +165,7 @@ def integration(exe):
             assert sum(m['kind'] == 'mcp_call' for m in g['messages']) == 1
             assert (pathlib.Path(g['root']) / 'fixture.txt').exists()
             assert not list((root / 'data/runner-work').iterdir()), 'ephemeral runner credentials were not removed'
-            waiting = new_goal('WAIT_TEST: cancellation fixture')
+            waiting = new_goal('WAIT_TEST: cancellation fixture', True)
             api('team/start', {'goal_id': waiting})
             wait(waiting, lambda g: all(a['status'] == 'running' for a in g['team']['agents'].values()))
             api('message', {'goal_id': waiting, 'body': 'A direction submitted while runners are active.'})
@@ -167,11 +185,33 @@ def integration(exe):
             assert g['run_history'][-1]['id'] == previous_id
             assert 'Intentional fixture failure' in g['run_history'][-1]['error']
             assert any(m['body'] == 'RECOVER_NOW: continue from preserved work.' for m in g['messages'])
+            for failed, survivor in [('claude','chatgpt'),('chatgpt','claude')]:
+                switch = new_goal('AUTO_SWITCH_TEST '+('FAIL_CLAUDE' if failed=='claude' else 'FAIL_CODEX'), True)
+                api('team/start', {'goal_id':switch})
+                g = wait(switch, lambda g:g['team']['status']!='running')
+                assert g['status']=='completed' and g['team']['solo_agent']==survivor, g
+                assert len(g['votes'])==1 and failed not in g['votes'],g
+                assert all(t['status']=='done' and t['owner']==survivor for t in g['tasks']),g
+                assert (pathlib.Path(g['root'])/(failed+'-partial.txt')).exists()
+                assert sum('Intentional connection failure' in e['text'] for e in g['team']['events'])==1,g
+            for suffix in ['FAIL_BOTH','FAIL_CLAUDE SURVIVOR_FAIL']:
+                switch=new_goal('AUTO_SWITCH_TEST '+suffix,True)
+                api('team/start',{'goal_id':switch})
+                g=wait(switch,lambda g:g['team']['status']!='running')
+                assert g['status']=='paused' and g['team']['status']=='error',g
+                assert g['team']['round']<=2,g
+            # An unavailable executable can hand over before any round is launched.
+            api('runner/settings',{**cfg,'claude':str(root/'missing-runner')})
+            switch=new_goal('AUTO_SWITCH_TEST preflight fallback',True)
+            api('team/start',{'goal_id':switch})
+            g=wait(switch,lambda g:g['team']['status']!='running')
+            assert g['status']=='completed' and g['team']['solo_agent']=='chatgpt',g
+            api('runner/settings',cfg)
             idle = new_goal('NO_WORK_TEST: detect lack of progress')
             api('team/start', {'goal_id': idle})
             g = wait(idle, lambda g: g['team']['status'] != 'running')
             assert g['team']['status'] == 'waiting' and g['team']['round'] == 2, g
-            print(json.dumps({'result': 'PASS', 'checks': ['two executable runner fixtures', 'scoped stdio adapters', 'live shared MCP transport', 'native image handoff', 'shared artifact', 'automatic next rounds', 'completion handshake', 'reported usage', 'temporary credential cleanup', 'active user direction', 'stop cancels both children', 'provider failure preserves peer work', 'continue after error completes same goal', 'previous error retained', 'no-progress stop after two rounds']}))
+            print(json.dumps({'result': 'PASS', 'checks': ['two executable runner fixtures', 'scoped stdio adapters', 'live shared MCP transport', 'native image handoff', 'shared artifact', 'automatic next rounds', 'completion handshake', 'reported usage', 'temporary credential cleanup', 'active user direction', 'stop cancels both children', 'provider failure preserves peer work', 'continue after error completes same goal', 'previous error retained', 'no-progress stop after two rounds','auto switch in both directions','inherited task ownership and evidence','solo completion without fake peer votes','both unavailable pauses','survivor failure stops','missing executable fallback']}))
             api('shutdown', {})
             server.wait(timeout=6)
         finally:

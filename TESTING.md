@@ -1,3 +1,9 @@
+# L-Bridge 0.4.1 verification
+
+Passed locally: Go race tests; auto-switch fixtures in both directions; task transfer, saved evidence, single-agent completion, both-failed and survivor-failed stopping, missing-executable fallback, disabled-mode behavior, and stop/review guards. Connection tests cover a large escaped JSON request, real MCP progress notifications, interrupted read recovery, no uncertain-edit replay, token rotation and competing startup. A real 0.4.0 to 0.4.1 local service upgrade preserves goals and messages.
+
+The estimated progress bar and Auto switch setting were checked in the browser with synthetic tasks. CI repeats Go and connection tests on Windows and Linux. Live provider outages and host-specific Claude/ChatGPT desktop timeout behavior remain unverified; fixtures establish protocol behavior, not compatibility with every host version.
+
 # L-Bridge 0.4.0 verification
 
 Passed locally on macOS:

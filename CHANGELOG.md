@@ -1,3 +1,15 @@
+# L-Bridge 0.4.1 — Auto switch, plugin reliability and progress
+
+- Add per-goal Auto switch (off by default) for Start Team: hand remaining work to the surviving runner after a peer failure or unavailable executable.
+- Transfer unfinished task ownership and preserve shared context/evidence; explicitly label solo completion without inventing peer approval.
+- Preserve stop controls, budgets and uncertain-MCP-edit review; stop if both runners fail.
+- Add an Estimated progress bar based on task completion; wait for a task plan and reserve 100% for confirmed completion.
+- Retry bounded read-only adapter requests after interrupted connections and refresh explicitly rejected desktop service tokens; never replay an uncertain mutation.
+- Wait for a competing adapter's startup instead of treating an early contender exit as a disconnected service.
+- Raise authenticated adapter/HTTP request limits to 8 MiB so valid escaped file content does not close the plugin connection.
+- Send periodic progress notifications during long MCP calls when supported by the host.
+- Preserve the tail of runner errors to keep the useful final error message visible.
+
 # L-Bridge 0.4.0 — web research, recovery and updates
 
 - Optional per-goal web research: Claude WebSearch/WebFetch and Codex live search, with shared source handoffs.

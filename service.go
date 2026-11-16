@@ -213,10 +213,16 @@ func existingService(dir string, restart bool, choose func(string) bool) (Endpoi
 }
 
 func ensureServer(dir string) (Endpoint, error) {
+	return ensureServerContext(context.Background(), dir)
+}
+func ensureServerContext(ctx context.Context, dir string) (Endpoint, error) {
 	serviceStartup.Lock()
 	defer serviceStartup.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Endpoint{}, err
+	}
 	if e, err := loadEndpoint(dir); err == nil {
-		if running, err := probeService(context.Background(), e); err == nil {
+		if running, err := probeService(ctx, e); err == nil {
 			if compareVersions(running, minimumServiceVersion) >= 0 {
 				return e, nil
 			}
@@ -234,21 +240,29 @@ func ensureServer(dir string) (Endpoint, error) {
 	}
 	finished := make(chan error, 1)
 	go func() { finished <- cmd.Wait() }()
-	for i := 0; i < 100; i++ {
-		if e, err := loadEndpoint(dir); err == nil && alive(e) {
-			return e, nil
-		}
-		select {
-		case <-finished:
-			// A simultaneous launch may have won the port and registered itself.
-			if e, err := loadEndpoint(dir); err == nil && alive(e) {
+	return waitForService(ctx, dir, finished)
+}
+func waitForService(ctx context.Context, dir string, finished <-chan error) (Endpoint, error) {
+	deadline := time.NewTimer(12 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if e, err := loadEndpoint(dir); err == nil {
+			if v, err := probeService(ctx, e); err == nil && compareVersions(v, minimumServiceVersion) >= 0 {
 				return e, nil
 			}
-			return Endpoint{}, errors.New("local bridge could not start; open L-Bridge.exe or use Restart L-Bridge.cmd. Closing a browser tab does not stop the service")
-		case <-time.After(100 * time.Millisecond):
+		}
+		select {
+		case <-ctx.Done():
+			return Endpoint{}, ctx.Err()
+		case <-deadline.C:
+			return Endpoint{}, errors.New("local bridge did not become ready; reopen L-Bridge.exe and check that both plugins use the same data folder")
+		case <-finished:
+			finished = nil // The other adapter may still be starting the shared service.
+		case <-tick.C:
 		}
 	}
-	return Endpoint{}, errors.New("local bridge did not start; open L-Bridge.exe to inspect the error")
 }
 
 func stopRecordedService(dir string) error {

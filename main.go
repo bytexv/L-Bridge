@@ -259,10 +259,10 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		var a M
 		if r.Method == "POST" {
-			r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+			r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
 			defer r.Body.Close()
 			if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-				apiError(w, errors.New("invalid JSON"))
+				apiError(w, errors.New("invalid JSON or request exceeds the 8 MiB limit"))
 				return
 			}
 		}
@@ -327,6 +327,7 @@ func (app *App) ui(r *http.Request, a M) (any, error) {
 			return nil, err
 		}
 		g.WebAccess = a["web_access"] == true
+		g.AutoSwitch = a["auto_switch"] == true
 		return M{"id": g.ID}, s.save()
 	case "/api/demo":
 		if r.Method != "POST" {
@@ -390,6 +391,12 @@ func (app *App) ui(r *http.Request, a M) (any, error) {
 					s.runtime.stop(g.ID)
 				}
 				g.WebAccess = value
+			}
+			if value, ok := a["auto_switch"].(bool); ok {
+				if value != g.AutoSwitch {
+					s.runtime.stop(g.ID)
+				}
+				g.AutoSwitch = value
 			}
 			g.Limit = limit
 			g.Mode = mode

@@ -16,6 +16,7 @@ import (
 )
 
 type Settings struct {
+	AutoSwitch  bool           `json:"-"`
 	WebAccess   bool           `json:"-"` // Per-run snapshot of the user-owned goal setting.
 	Claude      string         `json:"claude"`
 	Codex       string         `json:"codex"`

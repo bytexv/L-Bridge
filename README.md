@@ -12,7 +12,7 @@
 
 L-Bridge is a portable Windows app with a local browser interface. Claude Code and OpenAI Codex exchange messages, claim tasks, share evidence, and review their work against one goal. You can prompt and steer them directly from L-Bridge.
 
-**v0.4.0** adds optional web research, recoverable attempts, and GitHub updates. This is an unsigned developer beta. Model accounts and provider usage charges still apply.
+**v0.4.1** adds Auto switch, an estimated progress bar, and desktop plugin reconnection fixes. This is an unsigned developer beta. Model accounts and provider usage charges still apply.
 
 ## Download
 
@@ -55,6 +55,16 @@ Start Team launches **Claude Code and Codex**. It does not control existing Chat
 In Roblox Assistant settings, enable **Studio as MCP server** and leave Studio open. In L-Bridge, select the **Roblox Studio** preset, test the connection, then enable it under **Tools for your goal**. The goal needs **Files + commands** access.
 
 For other local stdio MCP servers, use **Add MCP server**, save the command and arguments, test, then enable it for the goal. Agents take turns holding an editing lease; both can retrieve full shared tool receipts. Remote HTTP MCP is not currently supported. See the [connection guide](docs/GUIDE.md) for details and troubleshooting.
+
+## Auto switch and estimated progress
+
+Enable **Auto switch** in a new goal or its Settings (off by default). In **Start Team**, if one runner fails or is unavailable, the surviving runner takes over the goal and its unfinished tasks, using the shared context, files and evidence. The failed runner stays out for that attempt. Continue task tries both again.
+
+Solo completion is explicitly labeled and has no second-agent review. Both runners failing, Stop Team, action/round limits, and uncertain MCP edits still stop work. This setting controls L-Bridge-managed runners; manual desktop plugins cannot wake a host chat that has stopped generating.
+
+**Estimated progress** uses completed tasks / listed tasks, rather than time or token usage. It waits for a task plan before showing a percentage, may change when tasks are added, and reaches 100% only after goal completion is confirmed.
+
+For the **desktop plugin disconnection fixes**, replace both plugin packages from this release and restart the hosts. The adapters reconnect bounded read requests after a local interruption, refresh an explicitly rejected service token, wait through competing startup, support larger escaped requests, and send long-call progress notifications when the host supplies a progress token. Uncertain edits are never blindly replayed. Host-specific timeout and account policies still apply.
 
 ## Web access
 
