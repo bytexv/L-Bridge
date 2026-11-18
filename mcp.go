@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -20,9 +22,34 @@ type rpcRequest struct {
 	Params  M               `json:"params"`
 }
 
+// readFrame consumes the whole line, even when it exceeds the request limit.
+// This keeps the next ping or tool call aligned on the same desktop connection.
+func readFrame(reader *bufio.Reader, limit int) (frame []byte, oversized bool, err error) {
+	for {
+		chunk, readErr := reader.ReadSlice('\n')
+		if len(chunk) > 0 && chunk[len(chunk)-1] == '\n' {
+			chunk = chunk[:len(chunk)-1]
+		}
+		if !oversized {
+			if len(chunk) > limit-len(frame) {
+				frame = nil
+				oversized = true
+			} else {
+				frame = append(frame, chunk...)
+			}
+		}
+		if readErr == bufio.ErrBufferFull {
+			continue
+		}
+		if readErr == io.EOF && (oversized || len(frame) > 0) {
+			readErr = nil
+		}
+		return frame, oversized, readErr
+	}
+}
+
 func stdio(dir, agent string) {
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Buffer(make([]byte, 65536), 8*1024*1024)
+	reader := bufio.NewReaderSize(os.Stdin, 65536)
 	var output sync.Mutex
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,9 +69,20 @@ func stdio(dir, agent string) {
 		json.NewEncoder(os.Stdout).Encode(out)
 		output.Unlock()
 	}
-	for scanner.Scan() {
+	for {
+		frame, oversized, err := readFrame(reader, 8*1024*1024)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Fprintln(os.Stderr, "L-Bridge desktop input:", err)
+			}
+			break
+		}
+		if oversized {
+			reply(nil, nil, -32600, "Request exceeds 8 MiB. Split the content into smaller calls.")
+			continue
+		}
 		var req rpcRequest
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+		if err := json.Unmarshal(frame, &req); err != nil {
 			reply(nil, nil, -32700, "Parse error")
 			continue
 		}
@@ -122,9 +160,6 @@ func stdio(dir, agent string) {
 			reply(req.ID, nil, -32601, "Method not found")
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "L-Bridge desktop transport closed:", err, ". Requests must fit within 8 MiB; split larger content.")
-	}
 	cancel()
 	wg.Wait()
 }
@@ -180,10 +215,10 @@ func adapterCall(ctx context.Context, dir, agent, runnerToken string, params M) 
 				return nil, fmt.Errorf("L-Bridge result is too large; request a smaller result")
 			}
 			if callErr == nil && status == http.StatusOK {
-				if !json.Valid(data) {
-					return nil, fmt.Errorf("L-Bridge returned an incomplete result; inspect the result before repeating an edit")
+				if json.Valid(data) {
+					return data, nil
 				}
-				return data, nil
+				callErr = errors.New("incomplete response")
 			}
 			if callErr == nil {
 				var body M
@@ -196,7 +231,10 @@ func adapterCall(ctx context.Context, dir, agent, runnerToken string, params M) 
 		}
 		transportFailure := status == 0 || (status == http.StatusOK && callErr != nil)
 		authChanged := runnerToken == "" && (status == http.StatusUnauthorized || status == http.StatusForbidden)
-		if attempt < 2 && ((transportFailure && retryableRead(str(params, "name"), args)) || authChanged) {
+		// A dial error occurs before any request bytes reach the service.
+		var networkErr *net.OpError
+		neverSent := status == 0 && errors.As(callErr, &networkErr) && networkErr.Op == "dial"
+		if attempt < 2 && (neverSent || (transportFailure && retryableRead(str(params, "name"), args)) || authChanged) {
 			timer := time.NewTimer(time.Duration(attempt+1) * 300 * time.Millisecond)
 			select {
 			case <-ctx.Done():

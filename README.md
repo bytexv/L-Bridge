@@ -12,7 +12,7 @@
 
 L-Bridge is a portable Windows app with a local browser interface. Claude Code and OpenAI Codex exchange messages, claim tasks, share evidence, and review their work against one goal. You can prompt and steer them directly from L-Bridge.
 
-**v0.4.1** adds Auto switch, an estimated progress bar, and desktop plugin reconnection fixes. This is an unsigned developer beta. Model accounts and provider usage charges still apply.
+**v0.4.2** keeps desktop plugins connected after oversized requests and adds dashboard recovery guidance. Install both updated plugins and restart their hosts. This is an unsigned developer beta. Model accounts and provider usage charges still apply.
 
 ## Download
 

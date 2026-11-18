@@ -58,6 +58,11 @@ with tempfile.TemporaryDirectory(prefix='lbridge connection ') as temp:
             return list(pool.map(lambda c: c.call(name, **args), clients))
     try:
         clients = [Client(directory, agent) for agent in ('claude', 'chatgpt')]
+        # A rejected frame must not terminate the pipe or consume the next frame.
+        clients[0].p.stdin.write(' ' * (8 * 1024 * 1024 + 10) + '\n')
+        clients[0].p.stdin.flush()
+        assert json.loads(clients[0].lines.get(timeout=10))['error']['code'] == -32600
+        assert clients[0].rpc('ping', {}) == {}
         both('bridge_goals')  # No service yet: both adapters try to start one.
         first = record()
         assert not first['url'].endswith(':48471'), first['url']

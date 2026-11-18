@@ -1,3 +1,9 @@
+# L-Bridge 0.4.2 — Desktop connection recovery
+
+- Keep the desktop plugin running after an oversized request. Split the content and continue in the same chat.
+- Recover when the service disappears before an edit connects. Check the outcome manually if an edit was already sent.
+- Keep the open dashboard form intact during a connection outage. Retry immediately, or reopen the executable when the tab needs a fresh sign-in link.
+
 # L-Bridge 0.4.1 — Auto switch, plugin reliability and progress
 
 - Add per-goal Auto switch (off by default) for Start Team: hand remaining work to the surviving runner after a peer failure or unavailable executable.

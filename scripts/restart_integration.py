@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='lbridge-restart-') as temp:
         post(e,'message',{'goal_id':gid,'body':'This message must survive the restart.'})
         port=e['url'].rsplit(':',1)[1]
         new=subprocess.Popen([new_exe,'--restart','--serve','--no-open','--data-dir',temp,'--port',port],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True);processes.append(new)
-        ready,state=wait_endpoint('0.4.1',e['token']);old.wait(timeout=5)
+        ready,state=wait_endpoint('0.4.2',e['token']);old.wait(timeout=5)
         assert old.returncode==0,old.stderr.read()
         goal=next(g for g in state['goals'] if g['id']==gid)
         assert goal['prompt']=='Saved before upgrading.'
@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='lbridge-restart-') as temp:
         assert not endpoint.exists()
         saved=json.loads((directory/'state.json').read_text())
         assert saved['goals'][0]['id']==gid
-        print(json.dumps({'result':'PASS','from':old_version,'to':'0.4.1','checks':['authenticated graceful upgrade','same port reused','saved goal and messages retained','duplicate launch reuses service','stop command ends service','saved state retained after stop']}))
+        print(json.dumps({'result':'PASS','from':old_version,'to':'0.4.2','checks':['authenticated graceful upgrade','same port reused','saved goal and messages retained','duplicate launch reuses service','stop command ends service','saved state retained after stop']}))
     finally:
         for p in processes:
             if p.poll() is None:p.terminate();p.wait(timeout=5)
